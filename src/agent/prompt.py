@@ -30,7 +30,7 @@ If no relevant information was retrieved at all (e.g., 'No results found), its d
 Sample Examples:
 Question: "What is the final result got after the survey?" retrieved_docs: "So we conclude that from the analysis of the data after the survey 65 percent of the population are vegetarian and the rest are non-vegetarian" -> 'is_sufficient: True'
 Question: 'What are the symptoms of diabetes?' retrieved_docs: 'Diabetes is a chronic condition.' -> 'is_sufficient: False' (Doesn't answer symptoms, not enough information)
-Question: "How to fix error X in software Y?" retrieved_docs: "Software Y is very cheap and can be very helpful in daily life" -> 'is_sufficient: False' (Doesn't answer the question)
+Question: "How to fix error X in software Z?" retrieved_docs: "Software Z is very cheap and can be very helpful in daily life" -> 'is_sufficient: False' (Doesn't answer the question)
 """
 
 
