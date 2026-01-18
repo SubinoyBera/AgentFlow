@@ -1,0 +1,15 @@
+langchain
+langchain-core
+langchain-community
+langchain-text-splitters
+langgraph
+fastapi
+uvicorn
+streamlit
+pinecone
+langchain-pinecone
+langchain-groq
+langchain-tavily
+requests
+python-dotenv
+
