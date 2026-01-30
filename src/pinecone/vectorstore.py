@@ -38,6 +38,15 @@ def get_embeddings():
     
 
 def create_pinecone_index(index_name: str):
+    """
+    Creates a Pinecone index with the given name if it doesn't already exist.
+
+    Args:
+        index_name (str): The name of the Pinecone index to create.
+
+    Raises:
+        AppException: If the index creation fails.
+    """
     if index_name not in client.list_indexes().names():
         try:
             client.create_index(
