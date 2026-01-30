@@ -53,6 +53,20 @@ answer_llm = ChatGroq(model="openai/gpt-oss-20b", temperature=0.7).with_structur
 
 # Node 1 : ROUTER NODE
 def router_node(state: AgentState):
+    """
+    This node takes in the user query and the external knowledge base metadata (if available) and
+    decides which node to route next based on the query.
+
+    If the route is "none", it returns the router LLM gives the reply.
+    Otherwise, it returns the query and the route decision.
+
+    Args:
+        state (AgentState): The current state of the agent.
+
+    Returns:
+        dict: A dictionary containing the route decision and the query.
+    """
+    
     if state.get("intermediate_query", False):
         query = state["response"]
     else:
@@ -77,6 +91,22 @@ def router_node(state: AgentState):
 
 # NODE 2 : RAG NODE
 def rag_node(state: AgentState):
+    """
+    This node takes in the user query and the external knowledge base metadata (if available) and
+    retrieves relevant documents from the external knowledge base stored in Pinecone database by
+    performing RAG search.
+
+    If the retrieval is successful, it then asks the RAG LLM to decide if the retrieved information is sufficient 
+    to answer the user query.
+    If the information is sufficient, it routes to the "answer" node, otherwise it routes to the "web" node.
+
+    Args:
+        state (AgentState): The current state of the agent.
+
+    Returns:
+        dict: A dictionary containing the route decision and the rag search retrieved documents.
+    """
+
     docs = retriever.invoke({"query": state["query"], "index_name": state["external_kb_meta"]["topic"]})
 
     if docs.startswith('rag_error'):
@@ -102,9 +132,21 @@ def rag_node(state: AgentState):
 
 # NODE 3: WEB SEARCH NODE
 def web_node(state: AgentState):
+    """
+    This node takes in the user query and performs a web search using the tools given.
+    After the web search, it always redirects to the answer agent. The web agent is based on ReAct framework.
+
+    Args:
+        state (AgentState): The current state of the agent.
+
+    Returns:
+        dict: A dictionary containing the web search results and the route decision.
+    """
+    
     # after web agent always redirect to answer agent
     state["route_decision"] = "answer"
 
+    # create ReAct agent
     web_agent = create_react_agent(
         llm = web_agent_llm,
         tools = [tavily_search, news_search, weather_tool, stock_finance_tool],
@@ -126,6 +168,17 @@ def web_node(state: AgentState):
 
 # NODE 5: RESEARCH NODE
 def research_node(state: AgentState):
+    """
+    This node takes in the user query and performs extensive research to prepare a detailed and professional research report. 
+    It uses the tool node to gather information and then uses it generate the research report. The research agent is also based 
+    on ReAct framework.
+
+    Args:
+        state (AgentState): The current state of the agent.
+
+    Returns:
+        dict: A dictionary containing the final research report.
+    """
     tools = [tavily_search, news_search]
     research_agent = ChatGroq(model="openai/gpt-oss-120b", temperature=0.5).bind_tools(tools)
 
@@ -140,8 +193,7 @@ def research_node(state: AgentState):
     chain = prompt_template | research_agent | StrOutputParser()
     research_report = chain.invoke({"topic": state["query"], "tools": tools})
 
-    #chat_history.append(AIMessage(research_report))
-    return {"final_response": research_report}
+    return {"final_response": research_report, "messages": AIMessage(content=research_report)}
 
 
 # NODE 5: RESEARCH TOOLS NODE
@@ -151,6 +203,17 @@ tool_node = ToolNode(research_tools)
 
 # NODE 6: ANSWER NODE
 def answer_node(state: AgentState):
+    """
+    This node takes in the user query and the results from the RAG and WEB nodes and generates the final answer 
+    based on the context and chat history. 
+    If the agent determines that it needs to ask a follow-up question, it routes back to the router node.
+
+    Args:
+        state (AgentState): The current state of the agent.
+
+    Returns:
+        dict: A dictionary containing the final answer and the next route decision.
+    """
     rag_results = state.get("rag_results", "None")
     web_results = state.get("web_results", "None")
 
@@ -181,19 +244,31 @@ def answer_node(state: AgentState):
     except Exception as e:
         return {"messages": [AIMessage(content=f"I apologize, but I encountered an error: {str(e)}")]}
 
-
+# CONDITIONAL FUNCTIONS FOR GRAPH EDGES
 def from_router(state) -> Literal["rag", "web", "answer", "research", "none"]:        
+    """
+    This function takes in the current state of the agent and returns the route decision made by the router node.
+    If the route decision is 'router', it raises a ValueError as the router node cannot route to itself.
+    """
     if state["route_decision"] == "router":
         raise ValueError("route_decision from router node cannot be 'router' again")
     return state["route_decision"]
 
 def after_rag(state) -> Literal["web_agent", "answer_agent"]:
+    """
+    This function takes in the current state of the agent and returns the next node to be visited after the RAG node.
+    If the route decision is 'web', it returns 'web_agent', otherwise it returns 'answer_agent'.
+    """
     if state["route_decision"] == "web":
         return "web_agent"
     else:
         return "answer_agent"
 
 def from_answer(state) -> Literal["follow_up", "none"]:
+    """
+    This function takes in the current state of the agent and returns the next node to be visited after the answer node.
+    If the route decision is 'router', it returns 'follow_up', otherwise it returns 'none'.
+    """
     if state["route_decision"] == "router":
         return "follow_up"
     else:
@@ -243,6 +318,6 @@ graph.add_conditional_edges(
         "none": END
     })
 
+# FINALIZE AGENT
 checkpointer = get_checkpointer()
-
 ai_agent = graph.compile(checkpointer=checkpointer)

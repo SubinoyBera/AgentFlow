@@ -8,7 +8,6 @@ from utils.common import retrieve_all_threads, generate_thread_id, load_pdf, cle
 from src.logger.logging import logging
 from src.exception.exception_handler import AppException
 
-
 def reset_chat():
     """
     Resets the chat by generating a new thread ID and clearing the chat history.
@@ -92,8 +91,7 @@ if st.sidebar.button("New Chat ↗️"):
 
 with st.sidebar:
     st.sidebar.header("➕ Upload PDF:")
-    uploaded_file = st.file_uploader("Upload", type="pdf", key=st.session_state.get("upload_key")
-)
+    uploaded_file = st.file_uploader("Upload", type="pdf", key=st.session_state.get("upload_key"))
 
     if uploaded_file is not None and not st.session_state["pinecone_index"]:
         with st.spinner("⏳ Processing PDF..."):
