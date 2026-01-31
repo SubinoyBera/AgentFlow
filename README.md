@@ -14,7 +14,7 @@ The project explores a modular, **graph-based agentic architecture** where:
 - Tools are invoked only when needed
 - The entire workflow is observable and debuggable
 
-The goal was to design an *extensible, production-oriented agent system* rather than a single prompt-based chatbot!!
+The goal was to design an *extensible, production-oriented agent system* rather than a single prompt-based chatbot!! 🎓
 
 
 ## 🧩 Agent Workflow
@@ -64,7 +64,15 @@ The goal was to design an *extensible, production-oriented agent system* rather 
 
 <b> 📍 All open source tools and free tier services have been used to develop this application!! 🙏✨</b>
 
-## Installation
+
+## 🎯 Application Preview
+
+![App](assets/app_img.png)
+
+
+![LangSmith Tracing](assets/langsmith.png)
+
+## 🛠️ Installation
 
 STEP: 01 - Clone this repository
 
@@ -94,7 +102,42 @@ STEP: 5 - Run the Application
 streamlit run app.py
 ```
 
-Open your browser and open the local URL : `http://localhost:8501/`.<br>
+Open your browser and open the local URL: `http://localhost:8501/`.<br>
 
-## 
+
+## ⚠️ Limitations & Known Constraints
+
+This project is implemented using publicly available, free-tier APIs. As a result, this has certain limitations which are expected and acknowledged:
+
+- **API Rate Limits**  
+  Free-tier access to services such as Tavily, Google Serper, etc., and LLM Providers enforces strict request limits, which can affect throughput under frequent usage.
+
+- **Dependency on External Services**  
+  System reliability depends on the availability and responsiveness of third-party APIs.
+
+- **Increased Latency**  
+  Multi-agent execution combined with external API calls can introduce noticeable latency, particularly when web search or research agents are invoked.
+
+- **Cold Start Delays**  
+  Free-tier services may experience cold starts or slower response times, especially after periods of inactivity.
+
+
+## 🔮 Future Work & Extensions
+
+The agentic architecture used in this project is designed to be extensible and scalable. Several enhancements can be explored in the futureiterations:
+
+- Addition of more Agents to perform a wide variety of tasks: New agents can be added to the workflow to handle tasks such as email management, calendar scheduling, document summarization, or task automation without disrupting existing agents.
+
+- Integration with Productivity Tools: The workflow can be extended with tools such as Gmail, Google Calendar, Slack, or Notion APIs to support real-world assistant and automation use cases.
+
+- Memory & Personalization: Add short-term and long-term memory modules to enable personalized and context-aware interactions across sessions.
+
+- Production-Grade Deployment: Replace the Streamlit interface with a scalable backend and API-driven architecture suitable for multi-user environments.
+
+<hr>
+
+🎗️🙏 **THANK YOU !!** :) <br>
+<b>-_with love & regards : Subinoy Bera (developer)_</b><br>
+🧡🤍💚
+
 
