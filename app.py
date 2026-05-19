@@ -1,10 +1,10 @@
 import os, sys
 import streamlit as st
 import tempfile
-from src.agent.langgraph_agent import ai_agent, external_kb_meta, checkpointer
+from src.agent.langgraph_agent import ai_agent, checkpointer
 from langchain_core.messages import HumanMessage
 from src.pinecone.vectorstore import add_doc_to_vectorstore
-from utils.common import retrieve_all_threads, generate_thread_id, load_pdf, clean_text, generate_summary
+from utils.common import *
 from src.logger.logging import logging
 from src.exception.exception_handler import AppException
 
@@ -66,6 +66,12 @@ if "pinecone_index" not in st.session_state:
 if "upload_key" not in st.session_state:
     st.session_state["upload_key"] = 0
 
+if "uploaded_image" not in st.session_state:
+    st.session_state["uploaded_image"] = False
+
+if "image_data" not in st.session_state:
+    st.session_state["image_data"] = None
+
 if "chat_history" not in st.session_state:
     st.session_state["chat_history"] = []
 
@@ -90,49 +96,67 @@ if st.sidebar.button("New Chat ↗️"):
     reset_chat()
 
 with st.sidebar:
-    st.sidebar.header("➕ Upload PDF:")
-    uploaded_file = st.file_uploader("Upload", type="pdf", key=st.session_state.get("upload_key"))
+    st.sidebar.header("➕ Upload File:")
+    uploaded_file = st.file_uploader("Upload PDF or Image",
+                                     type=["pdf", "png", "jpg", "jpeg"], 
+                                     key=st.session_state.get("upload_key")
+                                    )
 
-    if uploaded_file is not None and not st.session_state["pinecone_index"]:
-        with st.spinner("⏳ Processing PDF..."):
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
-                tmp_file.write(uploaded_file.read())
-                temp_file_path = tmp_file.name
- 
-            # Extract text from the pdf
+    if uploaded_file is not None:
+        file_extension = uploaded_file.name.split(".")[-1].lower()
+
+        # PDF PROCESSING
+        if file_extension == "pdf" and not st.session_state["pinecone_index"]:
+            with st.spinner("⏳ Processing PDF..."):
+                with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
+                    tmp_file.write(uploaded_file.read())
+                    temp_file_path = tmp_file.name
+    
+                # Extract text from the pdf
+                try:
+                    documents = load_pdf(temp_file_path)
+                    if documents:  
+                        extracted_text = "\n".join([doc.page_content for doc in documents])
+                        extracted_text = clean_text(extracted_text)
+
+                        summary = generate_summary(extracted_text)
+                        # Upload document to vector store
+                        add_doc_to_vectorstore(index_name=summary["topic"], content=extracted_text)
+
+                        # Update external_kb_meta in session state
+                        st.session_state["external_kb_meta"].update({
+                            "available": True,
+                            "topic": summary["topic"],
+                            "summary": summary["summary"]
+                        })
+
+                    st.session_state["pinecone_index"] = True
+                    st.success("✅ Successfully uploaded!")
+
+                except Exception as e:
+                    logging.error(f"Failed to process uploaded document: {e}", exc_info=True)
+                    st.error("❌ Failed to process the uploaded file! Open 'New Chat' and try again..")
+                    raise AppException(e, sys)
+
+                finally:
+                    if os.path.exists(temp_file_path):
+                        os.remove(temp_file_path)
+                        uploaded_file = None
+
+        # IMAGE PROCESSING
+        elif file_extension in ["png", "jpg", "jpeg"]:
             try:
-                documents = load_pdf(temp_file_path)
-                if documents:
-                    extracted_text = "\n".join([doc.page_content for doc in documents])
-                    extracted_text = clean_text(extracted_text)
+                with st.spinner("⏳ Processing Image..."):
+                    image_data = prepare_image_data(uploaded_file)
+                    st.session_state["uploaded_image"] = True
+                    st.session_state["image_data"] = image_data
 
-                    summary = generate_summary(extracted_text)
-                    # Upload document to vector store
-                    add_doc_to_vectorstore(index_name=summary["topic"], content=extracted_text)
+                    st.success("✅ Image uploaded successfully!")
 
-                    external_kb_meta["available"] = True
-                    external_kb_meta["topic"] = summary["topic"]
-                    external_kb_meta["summary"] = summary["summary"]
-                    
-                    # Update external_kb_meta in session state
-                    st.session_state["external_kb_meta"].update({
-                        "available": True,
-                        "topic": summary["topic"],
-                        "summary": summary["summary"]
-                    })
-
-                st.session_state["pinecone_index"] = True
-                st.success("✅ Successfully uploaded!")
-            
             except Exception as e:
-                logging.error(f"Failed processing document: {e}")
-                st.error("❌ Failed to process the uploaded file! Open 'New Chat' and please try again..")
+                logging.error(f"Failed to process image: {e}", exc_info=True)
+                st.error("❌ Failed to process the uploaded image! Open 'New Chat' and please try again..")
                 raise AppException(e, sys)
-
-            finally:
-                if os.path.exists(temp_file_path):
-                    os.remove(temp_file_path)
-                    uploaded_file = None
 
     st.sidebar.header("📂 Conversations:")
     for thread_id in st.session_state["chat_threads"][::-1]:
@@ -151,6 +175,7 @@ with st.sidebar:
                 temp_messages.append({'role': role, 'content': msg.content})
 
             st.session_state["chat_history"] = temp_messages
+            temp_messages.clear()
 
 
 # load converations
@@ -167,11 +192,12 @@ if user_input:
 
     initial_state = {
         "messages": [HumanMessage(content=user_input)],
-        "external_kb_meta": external_kb_meta,
+        "external_kb_meta": st.session_state["external_kb_meta"],
+        "uploaded_image": st.session_state["uploaded_image"],
+        "image_data": st.session_state["image_data"]
     }
 
     response = ai_agent.invoke(initial_state, config=CONFIG)       #type: ignore
-    
     agent_message = response["messages"][-1].content
     st.session_state["chat_history"].append({'role': 'assistant', 'content': agent_message})
     

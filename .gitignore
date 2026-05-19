@@ -208,4 +208,5 @@ __marimo__/
 
 data/*
 logs/*
+models/*
 test.ipynb

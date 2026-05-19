@@ -4,7 +4,8 @@ import re
 from datetime import datetime, timezone, timedelta
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain.prompts import ChatPromptTemplate
+from langchain_core.prompts import ChatPromptTemplate
+from langchain_core.messages import AIMessage, HumanMessage, BaseMessage, ToolMessage
 from langchain_community.document_loaders import PyPDFLoader
 from langsmith import traceable
 from pydantic import BaseModel, Field
@@ -107,6 +108,30 @@ def covert_to_exact_time(sunrise_utc, sunset_utc, tz_offset, dt_utc):
     dt_local = datetime.fromtimestamp(dt_utc, tz=local_tz)
 
     return sunrise_local.strftime("%H:%M:%S"), sunset_local.strftime("%H:%M:%S"), dt_local.strftime("%Y-%m-%d %H:%M:%S")
+
+
+def prepare_image_data(image):
+        """
+        Prepare image data for submission to LLM.
+
+        If an image is provided, reads the bytes data from the image file and 
+        constructs a list of dictionaries containing the mime type and image data.
+
+        Args:
+            image (File): The image file to be processed
+
+        Returns:
+            List[Dict[str, Union[str, bytes]]]: A list of dictionaries containing
+            the mime type and image data
+        """
+        bytes_data = image.getvalue()
+        img_parts = [
+            {
+                "mime_type": image.type,
+                "data": bytes_data 
+            }
+        ]
+        return img_parts
 
 
 class DocSummerizerResponse(BaseModel):

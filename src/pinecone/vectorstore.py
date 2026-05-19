@@ -3,7 +3,7 @@ from dotenv import load_dotenv
 load_dotenv()
 import asyncio
 from pinecone import Pinecone, ServerlessSpec
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_experimental.text_splitter import SemanticChunker
 from langchain_pinecone import PineconeVectorStore
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langsmith import traceable
@@ -28,7 +28,7 @@ def get_embeddings():
 
         google_api_key = os.getenv("GOOGLE_API_KEY")
         if google_api_key is not None:
-            embeddings = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004", google_api_key=SecretStr(google_api_key))
+            embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-001", google_api_key=SecretStr(google_api_key))
             return embeddings
         else:
             raise EnvironmentError("Google API key environment variable not found")
@@ -51,7 +51,7 @@ def create_pinecone_index(index_name: str):
         try:
             client.create_index(
                 name = index_name,
-                dimension = 768,
+                dimension = 3072,
                 metric = "cosine",
                 spec = ServerlessSpec(cloud='aws', region='us-east-1')
             )
@@ -77,7 +77,14 @@ def get_retriever(index_name: str):
         
     index = client.Index(index_name.lower())
     vectorstore = PineconeVectorStore(index=index, embedding=get_embeddings())
-    return vectorstore.as_retriever()
+    
+    return vectorstore.as_retriever(
+        search_type="mmr",
+        search_kwargs={
+            "k": 20,
+            "fetch_k": 40,
+            "lambda_mult": 0.5
+        })
 
 
 # upload document to vector store
@@ -100,20 +107,21 @@ def add_doc_to_vectorstore(index_name: str, content: str):
         create_pinecone_index(index_name.lower())
 
     try:
-        text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size = 1000,
-            chunk_overlap = 200,
-            separators=["\n\n", "\n", ".", " "],
-            add_start_index = True
+        splitter = SemanticChunker(
+            embeddings=get_embeddings(),
+            breakpoint_threshold_type="percentile"
         )
         # create langchain document object
-        doc = text_splitter.create_documents(texts=[content])
+        docs = splitter.create_documents([content])
 
         index = client.Index(index_name.lower())
-        vectorstore = PineconeVectorStore(index=index, embedding=get_embeddings())
 
+        vectorstore = PineconeVectorStore(
+            index=index,
+            embedding=get_embeddings()
+        )
         # add documents to vector store
-        vectorstore.add_documents(doc)
+        vectorstore.add_documents(docs)
         logging.info("Uploaded document chunks to pinecone vectore store successfully")
 
     except Exception as e:

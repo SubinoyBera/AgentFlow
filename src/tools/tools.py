@@ -1,6 +1,7 @@
 import os
 import re
 import requests
+import wikipedia
 from typing import Annotated
 from langchain_core.tools import tool
 from langchain_community.utilities import GoogleSerperAPIWrapper
@@ -10,21 +11,48 @@ from utils.common import covert_to_exact_time
 from src.logger.logging import logging
 
 @tool
-def retriever(query: str, index_name: str):
+def retriever(query: str, index_name: str, reranker) -> str:
     """
-    This tool is used to retrieve relevant documents based on the input query from Pinecone vector database 
-    which stores the vector embeddings of the uploaded document. 
-
+    A Langchain tool that retrieves documents from a knowledge base using MMR and reranks using a given reranker.
+    
     Args:
-        query (str): The query to search for.
-
+        query (str): The query to search for in the knowledge base.
+        index_name (str): The name of the Pinecone index to search in.
+        reranker: The reranker to use for reranking the retrieved documents.
+    
     Returns:
-        str: The page contents of the relevant documents. If no documents are found, an empty string is returned.
+        str: The content of the top 4 retrieved documents, separated by newlines.
     """
     try:
+        logging.info("Retrieving docs from vectorstore")
         retriever_instance = get_retriever(index_name)
-        docs = retriever_instance.invoke(query, k=4)
-        return '\n\n'.join(d.page_content for d in docs) if docs else "No results found"
+        # MMR retriever
+        docs = retriever_instance.invoke(
+            query,
+            search_type="mmr",
+            k=15,
+            lambda_mult=0.5
+        )
+
+        if not docs:
+            logging.warning("Retriever did not fetch any doc!")
+            return "No results found"
+        
+        # Prepare for reranking
+        pairs = [(query, d.page_content) for d in docs]
+
+        logging.info("Reranking docs")
+        scores = reranker.predict(pairs)
+
+        # Combine scores with docs
+        scored_docs = list(zip(docs, scores))
+
+        # Sort by score descending
+        scored_docs.sort(key=lambda x: x[1], reverse=True)
+        final_docs = [doc for doc, _ in scored_docs[:4]]
+
+        logging.info("Done")
+        return "\n\n".join(d.page_content for d in final_docs)
 
     except Exception as e:
         logging.error(f"Langchain retriever tool failed: {e}")
@@ -58,6 +86,8 @@ def tavily_search(query: str) -> dict:
                 "url": r.get("url", "None"),
                 "snippet": snippet
             })
+
+        logging.info("tavily_search tool called, and search results obtained")
         return {"tavily_web_search_results": search_results}
         
     except Exception as e:
@@ -81,11 +111,30 @@ def news_search(query: str) -> dict :
         serper_api = os.getenv("SERPER_API_KEY")
         search_client = GoogleSerperAPIWrapper(type="news", serper_api_key=serper_api)
         response = search_client.run(query=query)
+
+        logging.info("news_search tool called, and search results obtained")
         return {"news_results": response}
     
     except Exception as e:
         logging.error(f"news_search tool failed: {e}")
         return {"news_search_error": "Error during news search with serper api"}
+
+
+@tool
+def wiki_search(query: str):
+    """
+    Wikipedia search tool.
+    Useful for retrieving concise encyclopedic background information, historical facts, definitions, 
+    biographies, scientific concepts, and general knowledge from Wikipedia.
+    """
+    try:
+        wiki_results = wikipedia.summary(query, sentences=30)
+        logging.info("wiki_search tool called, and search results obtained")
+        return {"wiki_results": wiki_results}
+    
+    except Exception as e:
+        logging.error(f"wiki_search tool failed: {e}")
+        return {"wiki_search_error": "Error during wikipedia search"}
 
 
 @tool
@@ -123,7 +172,8 @@ def weather_tool(location: str) -> dict:
             "clouds": weather["clouds"],
             "extras": {"sunrise": sunrise, "sunset": sunset, "report_time": report_time, "country": weather["sys"]["country"]}   
         }
-
+        
+        logging.info("weather_tool called, and tool results obtained")
         return report
     
     except Exception as e:
@@ -149,6 +199,8 @@ def stock_finance_tool(symbol: Annotated[str, "Symbol for the company whose stoc
         stock_finance_api = os.getenv("STOCK_FINANCE_API_KEY")
         url = f'https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol={symbol}&apikey={stock_finance_api}'
         data = requests.get(url).json()
+
+        logging.info("stock_finance_tool called, and tool results obtained")
         return data
 
     except Exception as e:
