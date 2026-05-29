@@ -33,10 +33,9 @@ class AgentState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
     query: str
     route_decision: Literal["rag", "web", "answer", "multimodal", "router", "none"]
-    external_kb_meta: dict
+    indexed_docs: list[dict]
     rag_results: str
     web_results: str
-    uploaded_image: bool
     image_data: list
     intermediate_query: str
 
