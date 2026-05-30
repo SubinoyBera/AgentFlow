@@ -11,7 +11,7 @@ from utils.common import covert_to_exact_time
 from src.logger.logging import logging
 
 @tool
-def retriever(query: str, index_name: str, reranker) -> str:
+def retriever(query: str, index_name: str, reranker):
     """
     A Langchain tool that retrieves documents from a knowledge base using MMR and reranks using a given reranker.
     
@@ -30,13 +30,13 @@ def retriever(query: str, index_name: str, reranker) -> str:
         docs = retriever_instance.invoke(
             query,
             search_type="mmr",
-            k=15,
+            k=10,
             lambda_mult=0.5
         )
 
         if not docs:
             logging.warning("Retriever did not fetch any doc!")
-            return "No results found"
+            return None
         
         # Prepare for reranking
         pairs = [(query, d.page_content) for d in docs]
@@ -49,14 +49,23 @@ def retriever(query: str, index_name: str, reranker) -> str:
 
         # Sort by score descending
         scored_docs.sort(key=lambda x: x[1], reverse=True)
-        final_docs = [doc for doc, _ in scored_docs[:4]]
 
+        # Threshold filtering
+        threshold_filtered_docs = [
+            doc for doc, score in scored_docs if score >= 0.4
+        ]
+
+        if not threshold_filtered_docs:
+            logging.warning("All reranker scores below reranker threshold")
+            return None  
+    
+        final_docs = threshold_filtered_docs[:4]
         logging.info("Done")
         return "\n\n".join(d.page_content for d in final_docs)
 
     except Exception as e:
         logging.error(f"Langchain retriever tool failed: {e}")
-        return f"rag_error: failed to retrieve documents from knowledge base"
+        return None
 
 
 @tool

@@ -64,7 +64,7 @@ reranker_path = Path("models/bge-reranker-base")
 reranker = CrossEncoder(str(reranker_path))
 
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))                       #type: ignore                              
-vision_llm = genai.GenerativeModel("gemini-2.5-pro")                       #type: ignore
+vision_llm = genai.GenerativeModel("gemini-2.5-flash")                       #type: ignore
 
 
 # Node 1 : ROUTER NODE
@@ -145,11 +145,11 @@ def rag_node(state: AgentState):
                              "reranker": reranker
                             })
 
-    if docs.startswith('rag_error'):
+    if docs is None:
         return {
-            "route_decision": "web", 
-            "rag_results": None
-            }
+            "route_decision": "web",
+            "rag_results": "Failed to retrieve documents from knowledge base, Tool NOT AVAILABLE."
+        }
 
     prompt_template = ChatPromptTemplate(
         [
@@ -212,7 +212,7 @@ def web_node(state: AgentState):
             {"messages": [{"role": "user", "content": state["query"]}]},
             config=config
         )
-
+        
         return {
             "web_results": response["messages"][-1].content, 
             "route_decision": "answer"
@@ -285,7 +285,7 @@ def multimodal_node(state: AgentState):
         image_data = state.get("image_data", None)
 
         if image_data is not None:
-            response = vision_llm.generate_content([vision_agent_prompt, image_data[0]])            # type: ignore
+            response = vision_llm.generate_content([vision_agent_prompt, state["query"], image_data[0]])            # type: ignore
             return {"response": response.text, "messages": [AIMessage(content=response.text)]}
     
     except Exception as e:
