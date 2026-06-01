@@ -1,7 +1,7 @@
 # Multi-Agentic LLM Orchestration
-This project implements a production-style agentic AI system that dynamically routes user queries across multiple specialized agents using a graph-based execution model. Built with LangGraph, LangChain, and LangSmith, the system demonstrates how modern LLM applications can move beyond single-prompt chatbots toward modular, tool-aware, and observable AI workflows.
+This project implements a scalable agentic AI system that dynamically routes user queries across multiple specialized agents using a graph-based execution model. Built with LangGraph and LangChain, the system demonstrates how modern AI applications can move beyond single-prompt chatbots towards modular, tool-aware, and observable AI workflows.
 
-At the core of the system is a Router Agent that analyzes each user query and, at runtime, decides whether to handle it via real-time web search, Retrieval-Augmented Generation (RAG), or multi-step research using external tools. A dedicated agent handles each responsibility, and the final response is synthesized by an Answer Agent, ensuring clarity and reliability.
+At the core of the system is a Router Agent that analyzes each user query and, at runtime, decides whether to handle it via real-time Web Search, Retrieval-Augmented Generation (RAG), or process an image to respond the user query. A dedicated agent handles each responsibility, uses external tools, and the final response is synthesized by an Answer Agent, ensuring clarity and reliability.
 
 The entire workflow is orchestrated using LangGraph’s conditional state transitions, making the system easy to extend, debug, and evaluate. A Streamlit-based UI provides an interactive interface, while LangSmith integration enables full observability, tracing, and performance analysis of agent decisions and tool usage.
 
@@ -35,9 +35,9 @@ The goal was to design an *extensible, production-oriented agent system* rather 
    - Performs real-time web searches using different search tools.
    - Useful for recent or dynamic information.
 
-4. **Research Agent**
-   - Executes multi-step reasoning and prepares research report on the given topic.
-   - Uses external tools for deeper analysis
+4. **Vision Agent**
+   - Process and analyze the image uploaded.
+   - Answers image-based queries given by the user.
 
 5. **Answer Agent**
    - Synthesizes final output from the available context
@@ -57,7 +57,7 @@ The goal was to design an *extensible, production-oriented agent system* rather 
 1. **LangGraph** – Defines the agentic workflow as a stateful graph with conditional routing and execution paths.
 2. **LangChain** – Provides abstractions for agents, tools, prompts, and LLM interactions.
 3. **LangSmith** - End-to-end tracing, debugging, and evaluation of agent decisions, tool calls, and execution paths.
-4. **LLMs** – GPT-OSS-20b, GPT-OSS-120b, Gemini-2.5-flash, GoogleGenerativeAIEmbeddings
+4. **LLMs** – GPT-OSS-120b, Llama, Gemini-2.5-flash, GoogleGenerativeAIEmbeddings
 5. **Databases** - Pinecone, SqlLite.
 6. **Custom Tools** – Modular tool interfaces for different tasks.
 7. **Streamlit** - Interactive web-based UI for real-time user interaction with the agentic system.
@@ -124,11 +124,9 @@ This project is implemented using publicly available, free-tier APIs. As a resul
 
 ## 🔮 Future Work & Extensions
 
-The agentic architecture used in this project is designed to be extensible and scalable. Several enhancements can be explored in the futureiterations:
+The agentic architecture used in this project is designed to be extensible and scalable. Several enhancements can be explored in future iterations:
 
 - Addition of more Agents to perform a wide variety of tasks: New agents can be added to the workflow to handle tasks such as email management, calendar scheduling, document summarization, or task automation without disrupting existing agents.
-
-- Integration with Productivity Tools: The workflow can be extended with tools such as Gmail, Google Calendar, Slack, or Notion APIs to support real-world assistant and automation use cases.
 
 - Memory & Personalization: Add short-term and long-term memory modules to enable personalized and context-aware interactions across sessions.
 
