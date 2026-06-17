@@ -23,7 +23,7 @@ from transformers import logging as transformers_logging
 transformers_logging.set_verbosity_error()
 from src.logger.logging import logging
 from src.exception.exception_handler import AppException
-from utils.common import get_checkpointer
+from utils import get_checkpointer
 from ..tools.tools import retriever, tavily_search, news_search, wiki_search, weather_tool, stock_finance_tool
 from .prompt import (router_system_prompt, rag_agent_system_prompt, web_agent_prompt,
                     answer_agent_prompt, vision_agent_prompt)
