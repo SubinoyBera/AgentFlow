@@ -197,6 +197,7 @@ if user_input:
 
     initial_state = {
         "messages": [HumanMessage(content=user_input)],
+        "query": user_input,
         "external_kb_meta": st.session_state["external_kb_meta"],
         "uploaded_image": st.session_state["uploaded_image"],
         "image_data": st.session_state["image_data"]
