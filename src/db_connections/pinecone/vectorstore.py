@@ -8,7 +8,7 @@ from langchain_pinecone import PineconeVectorStore
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from langsmith import traceable
 from pydantic import SecretStr
-from src.logger.logging import logging
+from src.logger import logging
 from src.exception.exception_handler import AppException
 
 # initialize pinecone client

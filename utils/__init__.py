@@ -10,7 +10,7 @@ from langchain_community.document_loaders import PyPDFLoader
 from langsmith import traceable
 from pydantic import BaseModel, Field
 from src.agent.prompt import doc_summarizer_prompt
-from src.logger.logging import logging
+from src.logger import logging
 
 
 def generate_thread_id():

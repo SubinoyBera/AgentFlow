@@ -22,7 +22,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from src.agent.langgraph_agent import ai_agent
-from src.pinecone.vectorstore import add_doc_to_vectorstore
+from src.db_connections.pinecone.vectorstore import add_doc_to_vectorstore
 from utils.common import generate_thread_id, load_pdf, clean_text, generate_summary
 from utils.checkpointer import get_postgres_checkpointer
 from utils.session_store import get_session, save_session, delete_session, ping
