@@ -11,9 +11,6 @@ from langgraph.graph.message import add_messages
 from langgraph.types import interrupt
 from langgraph.errors import GraphInterrupt
 from langchain_core.runnables import RunnableConfig
-from langchain_core.tools import tool
-from sentence_transformers import CrossEncoder
-from pathlib import Path
 import google.generativeai as genai
 from dotenv import load_dotenv
 load_dotenv()
@@ -24,20 +21,17 @@ from transformers import logging as transformers_logging
 transformers_logging.set_verbosity_error()
 from src.logger import logging
 from src.exception.exception_handler import AppException
-from src.db_connections.postgres import get_checkpointer
-from src.tools.mcp.search_tools import retriever, tavily_search, news_search, wiki_search, weather_tool, stock_finance_tool
-from src.tools.n8n.workspace_tools import gmail_agent, calendar_agent
 from src.agent.helpers import *
 from src.agent.schema import (AssistantDecision, SupervisorDecision, WorkspaceAgentDecission, AnswerAgentResponse, TaskResult)
 from src.agent.prompt import (assistant_system_prompt, supervisor_system_prompt, research_agent_system_prompt,
-                    answer_agent_system_prompt, vision_agent_system_prompt)
+                              answer_agent_system_prompt, vision_agent_system_prompt)
 
 
 # AGENT STATE SCHEMA
 class AgentState(TypedDict):
     messages: Annotated[list[BaseMessage], add_messages]
     query: str
-    external_kb_meta: dict
+    internal_kb_meta: dict
     plan: list[str]
     completed_steps: list[str]
     task_results: Annotated[list[TaskResult], reduce_list]
@@ -66,28 +60,25 @@ answer_llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0.6).w
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))            #type: ignore
 vision_llm = genai.GenerativeModel("gemini-2.5-flash")          #type: ignore
 
-# load reranker model for retriever tool
-reranker_path = Path("models/bge-reranker-base")
-reranker = CrossEncoder(str(reranker_path))
-
-n8n_agents = {"gmail": gmail_agent, "calendar": calendar_agent}
+# INITIALIZE TOOLS
+mcp_tools: list = []
+n8n_agents = {}
 
 
-# ---------------------------------------------------------------------------
-# HELPERS -- standardized interrupt/resume contract
-# ---------------------------------------------------------------------------
-# Every HITL pause now uses the SAME payload shape going out:
-#   {"type": "approval", "message": <str>, ...extra context...}
-# And the SAME shape coming back from the resume (Command(resume=...)):
-#   {"approved": bool, "feedback": Optional[str]}
+# HANDLE INTERRUPTS
 def _parse_resume_decision(decision) -> tuple[bool, Optional[str]]:
-    """Normalizes whatever comes back from interrupt() into (approved, feedback)."""
+    """
+    Normalizes whatever comes back from interrupt() into (approved, feedback).
+    Standardized interrupt/resume contract. Every HITL pause uses the SAME payload shape going out:
+       {"type": "approval", "message": <str>, ...extra context...}
+    """
     if isinstance(decision, dict):
         approved = bool(decision.get("approved"))
         feedback = decision.get("feedback")
         return approved, feedback
-    # Fallback for a raw "y"/"n" string, just in case the frontend sends that.
-    if isinstance(decision, str):
+    
+    # Fallback for a raw "y"/"n" string
+    #if isinstance(decision, str):
         return decision.strip().lower() in ("y", "yes", "true", "1"), None
     return False, None
 
@@ -125,7 +116,7 @@ def assistant_node(state: AgentState):
             "query": query,
             "is_doc_uploaded": is_doc_uploaded,
             "is_image_uploaded": is_image_uploaded,
-        })                                                          #type: ignore   
+        })                                                    #type: ignore   
 
     except Exception as e:
         logging.error(f"Error in assistant node: {e}", exc_info=True)
@@ -204,7 +195,6 @@ def supervisor_node(state: AgentState):
         })                           # type: ignore
 
         # SAFETY NET: never let the supervisor emit a parallel fan-out when a HITL confirmation is required.
-        # for approval in the same superstep is unsupported and unsafe.
         next_nodes = response.next_nodes
         if response.requires_hitl and len(next_nodes) > 1:
             logging.error(
@@ -231,18 +221,12 @@ def supervisor_node(state: AgentState):
 
 
 # NODE 2a: WORKSPACE AGENT -- PROPOSE
-# ---------------------------------------------------------------------------
-# CRITICAL FIX (LangGraph replay semantics): interrupt() replays its ENTIRE
-# containing node from the top on Command(resume=...) -- only the interrupt()
-# call itself returns a cached value. Any LLM call placed BEFORE interrupt()
-# in the same function therefore re-executes on resume, and can silently
-# produce a different result than what the user actually approved.
-#
-# Fix: split into two nodes. This one (`workspace_agent`) does the
-# non-deterministic LLM call ONCE and commits its output via a normal
-# `return` (checkpointed by the graph -- never replayed). `workspace_confirm`
-# below does the interrupt and only ever reads that already-committed value.
 def workspace_agent(state: AgentState):
+    """
+    This agent does the non-deterministic LLM call ONCE and commits its output via a normal `return` 
+    (checkpointed by the graph -- never replayed). `workspace_confirm` below does the interrupt and 
+    only ever reads that already-committed value.
+    """
     instruction = state.get("delegation_instructions", {}).get("workspace_agent", "No instruction provided")
     referenced_context = get_referenced_context(state, state.get("reference_context_ids"))
 
@@ -296,7 +280,7 @@ def workspace_agent(state: AgentState):
 
 
 # NODE 2b: WORKSPACE AGENT -- CONFIRM & EXECUTE
-def workspace_confirm(state: AgentState):
+async def workspace_confirm(state: AgentState):
     is_final_step = bool(state.get("is_final_step"))
     requires_hitl = bool(state.get("requires_hitl"))
     pending = state.get("pending_action") or {}
@@ -324,7 +308,7 @@ def workspace_confirm(state: AgentState):
         if requires_hitl:
             decision = interrupt({
                 "type": "approval",
-                "message": f"{agent_name} is about to: {action}. Approve? (y/n)",
+                "message": f"{agent_name} is about to: {action}. Approve?",
                 "pending_action": {"agent": agent_name, "action": action, "instruction": instruction},
             })
             approved, revision_feedback = _parse_resume_decision(decision)
@@ -339,7 +323,7 @@ def workspace_confirm(state: AgentState):
                     "pending_action": None,
                 }
 
-        result = agent.invoke(full_instruction)
+        result = await agent.ainvoke({"instruction": full_instruction})
 
         update = {
             "task_results": [task_result(
@@ -370,25 +354,12 @@ def workspace_confirm(state: AgentState):
 
 
 # NODE 3: RESEARCH NODE
-def research_node(state: AgentState):
+async def research_node(state: AgentState):
     instruction = state.get("delegation_instructions", {}).get("research_agent", state.get("query", ""))
     is_final_step = bool(state.get("is_final_step"))
-
-    @tool
-    def internal_kb_search(query: str):
-        """Search the INTERNAL business knowledge base (RAG) for relevant documents.
-        This is NOT for user-uploaded PDFs -- those are handled directly via `uploaded_doc`
-        in answer_node, never RAG."""
-        index_name = state.get("external_kb_meta", {}).get("topic", "")
-        if not index_name:
-            return "No internal knowledge base is available. Use web search tools instead."
-        docs = retriever.invoke({"query": query, "index_name": index_name, "reranker": reranker})
-        return docs if docs else "No relevant documents found in internal knowledge base."
-
-    tools = [internal_kb_search, tavily_search, news_search, wiki_search, weather_tool, stock_finance_tool]
-
     system_prompt = research_agent_system_prompt
-    kb_meta = state.get("external_kb_meta", {})
+    kb_meta = state.get("internal_kb_meta", {})
+    
     if kb_meta.get("available"):
         system_prompt = (
             f"{research_agent_system_prompt}\n\nNOTE: An internal knowledge base is available on topic "
@@ -398,13 +369,12 @@ def research_node(state: AgentState):
 
     agent = create_agent(
         model=research_agent_llm,
-        tools=tools,
+        tools=mcp_tools,
         system_prompt=system_prompt,
     )
     config = RunnableConfig({"recursion_limit": 14})
-
     try:
-        response = agent.invoke({"messages": [{"role": "user", "content": instruction}]}, config=config)
+        response = await agent.ainvoke({"messages": [{"role": "user", "content": instruction}]}, config=config)
         result = response["messages"][-1].content
 
         if is_final_step:
@@ -525,12 +495,12 @@ def answer_confirm(state: AgentState):
                 "draft_answer": None,
             }
 
-    update = {"hitl_feedback": None, "draft_answer": None}
+    update = {"hitl_feedback": None, "draft_answer": None}                                        
     if is_final_step:
-        update["messages"] = [AIMessage(content=final_answer)]
-        update["next_nodes"] = ["FINISH"]
+        update["messages"] = [AIMessage(content=final_answer)]                                #type: ignore
+        update["next_nodes"] = ["FINISH"]                                                     #type: ignore
     else:
-        update["next_nodes"] = ["supervisor"]
+        update["next_nodes"] = ["supervisor"]                                                 #type: ignore
     return update
 
 
@@ -548,9 +518,7 @@ def vision_node(state: AgentState):
         return {"messages": [AIMessage(content="I apologize, but I encountered an error processing the image. Please try again later.")]}
 
 
-# ---------------------------------------------------------------------------
 # CONDITIONAL ROUTING FUNCTIONS
-# ---------------------------------------------------------------------------
 def route_from_assistant(state: AgentState) -> str:
     nodes = state.get("next_nodes", ["supervisor"])
     if "FINISH" in nodes:
@@ -559,16 +527,9 @@ def route_from_assistant(state: AgentState) -> str:
         return "vision"
     return "supervisor"
 
-
 def route_by_next_nodes(state: AgentState) -> list[str]:
     """
-    Generic router: reads `next_nodes` from state and either fans out to those
-    node names or terminates. Used by supervisor, workspace_agent, research_agent,
-    and answer_agent -- any node whose own logic decides where to go next.
-    Each of those nodes is responsible for NEVER emitting more than one node
-    name here when requires_hitl is True for the step in progress (enforced
-    defensively in supervisor_node; workspace_agent/answer_agent are single
-    nodes by construction so this can't arise for them).
+    Generic router: reads `next_nodes` from state and either fans out to those node names or terminates.
     """
     nodes = state.get("next_nodes", ["FINISH"])
     if "FINISH" in nodes:
@@ -576,10 +537,7 @@ def route_by_next_nodes(state: AgentState) -> list[str]:
     return nodes
 
 
-# ---------------------------------------------------------------------------
 # BUILD GRAPH WORKFLOW
-# ---------------------------------------------------------------------------
-
 graph = StateGraph(AgentState)
 
 graph.add_node("assistant", assistant_node)
@@ -594,14 +552,19 @@ graph.add_node("vision", vision_node)
 graph.add_edge(START, "assistant")
 graph.add_conditional_edges("assistant", route_from_assistant)
 graph.add_conditional_edges("supervisor", route_by_next_nodes)
-
 graph.add_conditional_edges("research_agent", route_by_next_nodes)
 graph.add_conditional_edges("workspace_agent", route_by_next_nodes)
 graph.add_conditional_edges("workspace_confirm", route_by_next_nodes)
 graph.add_conditional_edges("answer_agent", route_by_next_nodes)
 graph.add_conditional_edges("answer_confirm", route_by_next_nodes)
-
 graph.add_edge("vision", END)
 
-checkpointer = get_checkpointer()
-ai_agent = graph.compile(checkpointer=checkpointer)
+ai_agent = None             # compiled by build_agent(), called from AgentRuntime._startup()
+
+async def build_agent():
+    global ai_agent
+    from src.db_connections.postgres import init_checkpointer
+    checkpointer = await init_checkpointer()
+    ai_agent = graph.compile(checkpointer=checkpointer)
+    
+    return ai_agent

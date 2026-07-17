@@ -1,0 +1,49 @@
+{
+  "internal_kb_search": { 
+    "command": "python", 
+    "args": ["-m", "mcp_servers.general.internal_kb_search"], 
+    "transport": "stdio" 
+  },
+
+  "tavily_search": {
+    "command": "python",
+    "args": ["-m", "mcp_servers.general.tavily_search"],
+    "transport": "stdio"
+  },
+
+  "news_search": {
+    "command": "python",
+    "args": ["-m", "mcp_servers.general.news_search"],
+    "transport": "stdio"
+  },
+
+  "wiki_search": {
+    "command": "python",
+    "args": ["-m", "mcp_servers.general.wiki_search"],
+    "transport": "stdio"
+  },
+
+  "weather_tool": {
+    "command": "python",
+    "args": ["-m", "mcp_servers.general.weather_search"],
+    "transport": "stdio"
+  },
+
+  "stock_finance": {
+    "command": "python",
+    "args": ["-m", "mcp_servers.general.stock_finance"],
+    "transport": "stdio"
+  },
+
+  "gmail": {
+    "command": "python",
+    "args": ["-m", "mcp_servers.n8n.gmail"],
+    "transport": "stdio"
+  },
+
+  "calendar": {
+    "command": "python",
+    "args": ["-m", "mcp_servers.n8n.calendar"],
+    "transport": "stdio"
+  }
+}

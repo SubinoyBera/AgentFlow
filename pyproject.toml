@@ -1,7 +1,20 @@
 [project]
-name = "multi-ai-agent"
-version = "0.1.0"
-description = "Add your description here"
+name = "Multi-Agent AI Assistant"
+version = "2.0.0"
+authors = [
+  { name="Subinoy Bera", email="subinoy.bera.ds@gmail.com" }
+]
+
+description = "Intelligent Multi-Agent AI System with MCP and HITL Automation"
 readme = "README.md"
+license = { file = "LICENSE" }
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
 requires-python = ">=3.11"
 dependencies = []

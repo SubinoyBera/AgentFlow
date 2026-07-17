@@ -24,41 +24,6 @@ def generate_thread_id():
     return thread_id
 
 
-def get_checkpointer():
-    """
-    Returns a checkpoint object that can be used to save and load data.
-
-    A checkpoint object is used to save and load data from a database. This function returns a checkpoint
-    object connected to a SQLite database. The checkpoint object is used to save and load data in the database.
-
-    Returns:
-        SqliteSaver: A checkpoint object connected to a SQLite database.
-    """
-    conn = sqlite3.connect(database='data/chat_datastore.db', check_same_thread=False)
-    checkpointer = SqliteSaver(conn=conn)
-    return checkpointer
-
-
-def retrieve_all_threads(checkpointer):
-    """
-    Retrieves all thread IDs from the checkpoint.
-    This function retrieves all thread IDs saved in the checkpoint object and returns them in a list.
-
-    Args:
-        checkpoint (SqliteSaver): The checkpoint object to retrieve the thread IDs from.
-
-    Returns:
-        list: A list of all thread IDs saved in the checkpoint.
-    """
-    all_threads =  set()
-    for checkpoint in checkpointer.list(None):
-        configurable = checkpoint.config.get("configurable")
-        if configurable and "thread_id" in configurable:
-            all_threads.add(configurable["thread_id"])
-
-    return list(all_threads)
-
-
 @traceable(name="load_pdf")
 def load_pdf(path: str):
     """
@@ -113,16 +78,12 @@ def covert_to_exact_time(sunrise_utc, sunset_utc, tz_offset, dt_utc):
 def prepare_image_data(image):
         """
         Prepare image data for submission to LLM.
-
-        If an image is provided, reads the bytes data from the image file and 
-        constructs a list of dictionaries containing the mime type and image data.
-
+        If an image is provided, reads the bytes data from the image file and constructs a list of dictionaries 
+        containing the mime type and image data.
         Args:
-            image (File): The image file to be processed
-
+            image (PIL.Image.Image): The image to be prepared
         Returns:
-            List[Dict[str, Union[str, bytes]]]: A list of dictionaries containing
-            the mime type and image data
+            List[Dict[str, Union[str, bytes]]]: A list of dictionaries containing the mime type and image data
         """
         bytes_data = image.getvalue()
         img_parts = [
@@ -141,19 +102,23 @@ class DocSummerizerResponse(BaseModel):
 
 def generate_summary(doc: str) -> dict:
     """
-    Generate a summary of the given document using LLM
-
+    Generate a summary of the given document using LLM.
     Args:
         doc (str): The document to be summarized
-
     Returns:
         str : The generated summary of the document
     """
-    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash").with_structured_output(DocSummerizerResponse)
+    llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash-lite").with_structured_output(DocSummerizerResponse)
     prompt = ChatPromptTemplate(
         [
             ("system", "You are an expert writer"),
-            ("human", doc_summarizer_prompt)
+            ("human", """
+             Generate a brief precise summary (not more than 100 words) about the document given.
+             **The summary should highlight ALL the key points, ideas, results, etc. present in the document.**
+             Document:
+             {doc})
+            """
+            )
         ],
         input_variables = ["doc"]
     )
