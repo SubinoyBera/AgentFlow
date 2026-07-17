@@ -255,7 +255,10 @@ if "chat_threads" not in st.session_state:
     st.session_state["chat_threads"] = runtime.retrieve_all_threads()
 
 if "internal_kb_meta" not in st.session_state:
-    st.session_state["internal_kb_meta"] = {}
+    st.session_state["internal_kb_meta"] = {
+        "topic": "HR Policy",
+        "summary": "Company overview Nexa AI and Leave Policies"
+    }
 
 if "image_processed" not in st.session_state:
     st.session_state["image_processed"] = False

@@ -28,7 +28,7 @@ def get_embeddings():
 
         google_api_key = os.getenv("GOOGLE_API_KEY")
         if google_api_key is not None:
-            embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-001", google_api_key=SecretStr(google_api_key))
+            embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-001", api_key=SecretStr(google_api_key))
             return embeddings
         else:
             raise EnvironmentError("Google API key environment variable not found")
